@@ -20,7 +20,7 @@ const loadConfig = function (folder: string, env: string) {
 const resourceSdks: any = {};
 
 // 读取 sdk
-const loadSdk = function (name: string) {
+const loadSdk = function (root: string, name: string) {
   if (!name) {
     throw Error('Unknow sdk');
   }
@@ -30,8 +30,8 @@ const loadSdk = function (name: string) {
   }
 
   const paths = [
-    `${process.cwd()}/config/providers/libs/${name}/index.ts`,
-    `${process.cwd()}/node_modules/@faasjs/provider-${name}/lib/index.js`,
+    `${root}/config/providers/libs/${name}/index.ts`,
+    `${root}/node_modules/@faasjs/provider-${name}/lib/index.js`,
   ];
 
   for (const path of paths) {
@@ -44,20 +44,30 @@ const loadSdk = function (name: string) {
   throw Error(`Sdk load failed\nfind paths:\n${paths.join('\n')}`);
 };
 
+/**
+ * 发布实例
+ */
 export default class Deploy {
   public name: string;
+  public root: string;
   public file: string;
   public flow: Flow;
   public providers: any;
   public resources: any;
   public logger: Logger;
 
-  constructor(file: string) {
+  /**
+   * 创建发布实例
+   * @param root {string} 根目录路径
+   * @param file {string} 流程文件路径
+   */
+  constructor (root: string, file: string) {
+    this.root = root;
     this.file = file;
     this.name = file.match(/([^/]+)\.flow\.ts$/)![1];
     this.flow = require(file).default;
 
-    const config = loadConfig(process.cwd() + '/config/providers', 'testing');
+    const config = loadConfig(root + '/config/providers', 'testing');
 
     // 处理云函数的资源配置
     let resourceName = this.flow.config.resource!.name || config.resources.defaults.function;
@@ -77,7 +87,7 @@ export default class Deploy {
     this.logger = new Logger('@faasjs/deploy:' + this.name);
   }
 
-  public async build() {
+  public async build () {
     this.logger.debug('build %s', this.file);
 
     const time = new Date().toLocaleString('zh-CN', {
@@ -85,7 +95,7 @@ export default class Deploy {
       timeZone: 'Asia/Shanghai',
     }).replace(/(\/|:|\s)/g, '_');
 
-    const tmpFolder = `${process.cwd()}/tmp/functions/${this.name}/${time}`;
+    const tmpFolder = `${this.root}/tmp/functions/${this.name}/${time}`;
 
     this.logger.debug('解析云函数');
 
@@ -229,7 +239,7 @@ module.exports.handler = module.exports.createTrigger('${func.type}', ${func.key
     };
   }
 
-  public async deploy({
+  public async deploy ({
     functions,
     triggers,
   }: {
@@ -240,7 +250,7 @@ module.exports.handler = module.exports.createTrigger('${func.type}', ${func.key
       this.logger.label = '@faasjs/deploy:' + func.name;
       this.logger.debug('开始发布云函数');
 
-      const sdk = loadSdk(func.resource.type);
+      const sdk = loadSdk(this.root, func.resource.type);
       await sdk.deploy(func.resource.provider, func);
     }
 
@@ -248,7 +258,7 @@ module.exports.handler = module.exports.createTrigger('${func.type}', ${func.key
       this.logger.label = '@faasjs/deploy:' + trigger.type;
       this.logger.debug('开始发布触发器');
 
-      const sdk = loadSdk(trigger.resource.type);
+      const sdk = loadSdk(this.root, trigger.resource.type);
       await sdk.deploy(this.providers[trigger.resource.provider], trigger);
     }
 
