@@ -52,7 +52,7 @@ export default class Deploy {
   public resources: any;
   public logger: Logger;
 
-  constructor (file: string) {
+  constructor(file: string) {
     this.file = file;
     this.name = file.match(/([^/]+)\.flow\.ts$/)![1];
     this.flow = require(file).default;
@@ -77,7 +77,7 @@ export default class Deploy {
     this.logger = new Logger('@faasjs/deploy:' + this.name);
   }
 
-  public async build () {
+  public async build() {
     this.logger.debug('build %s', this.file);
 
     const time = new Date().toLocaleString('zh-CN', {
@@ -182,6 +182,7 @@ export default class Deploy {
           typescript({
             tsconfigOverride: {
               compilerOptions: {
+                declaration: false,
                 module: 'esnext'
               }
             }
@@ -228,7 +229,7 @@ module.exports.handler = module.exports.createTrigger('${func.type}', ${func.key
     };
   }
 
-  public async deploy ({
+  public async deploy({
     functions,
     triggers,
   }: {
