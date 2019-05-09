@@ -10,14 +10,14 @@ describe('multi', function () {
 
   test('build', async function () {
     const deploy = new Deploy(__dirname + '/flows/multi.flow.ts');
-    const info = deploy.build();
+    const info = await deploy.build();
 
     expect(info.functions).toHaveLength(2);
-  });
+  }, 10000);
 
   test('deploy', async function () {
     const deploy = new Deploy(__dirname + '/flows/multi.flow.ts');
-    const info = deploy.build();
+    const info = await deploy.build();
     const res = await deploy.deploy(info);
 
     expect(res).toBeTruthy();

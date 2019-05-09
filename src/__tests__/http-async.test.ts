@@ -10,15 +10,15 @@ describe('http-async', function () {
 
   test('build', async function () {
     const deploy = new Deploy(__dirname + '/flows/http-async.flow.ts');
-    const info = deploy.build();
+    const info = await deploy.build();
 
     expect(info.functions).toHaveLength(2);
     expect(info.triggers).toHaveLength(1);
-  });
+  }, 10000);
 
   test('deploy', async function () {
     const deploy = new Deploy(__dirname + '/flows/http-async.flow.ts');
-    const info = deploy.build();
+    const info = await deploy.build();
     const res = await deploy.deploy(info);
 
     expect(res).toBeTruthy();

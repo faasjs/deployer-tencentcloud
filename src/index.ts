@@ -4,6 +4,8 @@ import { deepMerge, Logger } from '@faasjs/utils';
 import { execSync } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import * as YAML from 'js-yaml';
+import * as rollup from 'rollup';
+import typescript from 'rollup-plugin-typescript2';
 
 const loadConfig = function (folder: string, env: string) {
   const configs = [
@@ -75,7 +77,7 @@ export default class Deploy {
     this.logger = new Logger('@faasjs/deploy:' + this.name);
   }
 
-  public build () {
+  public async build () {
     this.logger.debug('build %s', this.file);
 
     const time = new Date().toLocaleString('zh-CN', {
@@ -148,8 +150,6 @@ export default class Deploy {
 
     this.logger.debug('解析完毕\n云函数：%o\n触发器：%o', functions, triggers);
 
-    const indexTS = readFileSync(this.file).toString();
-
     for (const func of functions) {
       this.logger.label = '@faasjs/build:' + func.name;
       this.logger.debug('开始构建');
@@ -164,54 +164,58 @@ export default class Deploy {
         return acc;
       });
 
-      this.logger.debug('创建 index.ts');
-      func.indexTS = `/**
- * @name ${func.name}
- * @author ${process.env.LOGNAME}
- * @build ${time}
- */
-${indexTS}
-exports.default.config.name = '${this.name}';
-exports.default.config.resource = ${JSON.stringify(this.flow.config.resource)};
-
-exports.handler = exports.default.createTrigger('${func.type}', ${func.key});
-`;
-
       this.logger.debug('添加基础依赖');
       func.packageJSON = {
         dependencies: {
           '@faasjs/flow-tencentcloud': '0.0.0-alpha.2',
-          typescript: '*',
         },
         name: func.name,
         private: true,
         version: time,
       };
 
-      this.logger.debug('写入 index.ts');
-      writeFileSync(func.tmpFolder + '/index.ts', func.indexTS);
+      this.logger.debug('写入 index.js');
 
-      this.logger.debug('写入 tsconfig.json');
-      writeFileSync(func.tmpFolder + '/tsconfig.json', JSON.stringify({
-        compilerOptions: {
-          declaration: true,
-          module: 'commonjs',
-          outDir: './',
-          strict: true,
-          target: 'es2017',
-        },
-        exclude: [
-          'node_modules',
-        ],
-        include: [
-          '**/*.ts',
-        ],
-      }));
+      const bundle = await rollup.rollup({
+        input: this.file,
+        plugins: [
+          typescript({
+            tsconfigOverride: {
+              compilerOptions: {
+                module: 'esnext'
+              }
+            }
+          }),
+        ]
+      });
+
+      bundle.cache.modules!.forEach(function (m: { dependencies: string[] }) {
+        m.dependencies.forEach(function (d: string) {
+          if (d.includes('node_modules') && !func.packageJSON.dependencies[d as string]) {
+            console.log(d);
+            func.packageJSON.dependencies[d as string] = '*';
+          }
+        });
+      });
+
+      await bundle.write({
+        file: func.tmpFolder + '/index.js',
+        format: 'cjs',
+        name: 'index',
+        banner: `/**
+ * @name ${func.name}
+ * @author ${process.env.LOGNAME}
+ * @build ${time}
+ */`,
+        footer: `module.exports.config.name = '${this.name}';
+module.exports.config.resource = ${JSON.stringify(this.flow.config.resource)};
+module.exports.handler = module.exports.createTrigger('${func.type}', ${func.key});`
+      });
 
       this.logger.debug('写入 package.json');
       writeFileSync(func.tmpFolder + '/package.json', JSON.stringify(func.packageJSON));
 
-      ['install --production', 'run tsc', 'remove typescript'].forEach((cmd) => {
+      ['install --production'].forEach((cmd) => {
         this.logger.debug('yarn ' + cmd);
 
         execSync('yarn --cwd ' + func.tmpFolder + ' ' + cmd);
